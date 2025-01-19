@@ -2,43 +2,41 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer
 
-
+model_size=100
 class TokenHandler():
-    def __init__(self):
+    def __init__(self,):
         self.tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased")
+        self.vocab_size=len(self.tokenizer.get_vocab())
 
     def process_text(self,text: str):
         tokens = self.tokenizer.tokenize(text)
-        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-        pos_ids = list(range(len(token_ids)))
+        token_ids = torch.tensor(self.tokenizer.convert_tokens_to_ids(tokens))
+        pos_ids = torch.tensor(list(range(len(token_ids))))
         return token_ids, pos_ids
+
+    
 class Embedder(nn.Module):
-    def __init__(self):
-        self.token_embd=nn.Embedding()
-        self.pos_embd=nn.Embedding()
-        self.segment_embd=nn.Embedding()
-        self.layer_norm= nn.LayerNorm()
-        self.dropout = nn.Dropout()
+    def __init__(self, vocab_size: int, model_hidden_size: int):
+        super().__init__()
+        self.token_embd=nn.Embedding(vocab_size,model_hidden_size)
+        self.pos_embd=nn.Embedding(vocab_size,model_hidden_size)
+        #self.segment_embd=nn.Embedding(vocab_size,model_hidden_size)
+        self.layer_norm= nn.LayerNorm(model_hidden_size,eps=1e-12)
+        #self.dropout = nn.Dropout()
     def forward(self, 
                 input_token_id=None,
                 input_token_embd=None,  
-                input_position_id=None, 
-                input_segment_id=None)->torch.LongTensor:
+                input_position_id=None)->torch.LongTensor:
         if input_token_id is None and input_token_embd is None:
             raise("Both input_token_id and input_token_embd cant be None")
         if input_token_embd is None: 
             token_encoding = self.token_embd(input_token_id)
         else:
             token_encoding=input_token_embd
-        
-        if input_position_id is not None: 
-            position_encoding= self.pos_embd(input_position_id)
-        if input_segment_id is not None: 
-            segment_encoding = self.segment_embd(input_segment_id)
-
-        embeddings= token_encoding+position_encoding+segment_encoding
+        position_encoding=self.pos_embd(input_position_id)
+        embeddings= token_encoding+position_encoding
         embeddings = self.layer_norm(embeddings)
-        embeddings = self.dropout(embeddings)
+        #embeddings = self.dropout(embeddings)
         return embeddings
 
 class Head(nn.Module):
@@ -50,7 +48,7 @@ class Head(nn.Module):
         self.head_size=head_size
         self.dropout=nn.Dropout()
 
-    def forward(self):
+    def forward(self,input):
         query_tensor=self.query(input) #dim (B,T,C)
         key_tensor=self.key(input) #dim (B,T,C)
         value_tensor=self.value(input) #dim (B,T,C)
@@ -118,4 +116,11 @@ class Model(nn.Module):
     def forward(self,input):
         encoder_output = self.encoder(input) #Un vector que codifica todos los tokens
 
-print("hello")
+print("Encoder Trial:")
+text="mi perro muerde"
+handle=TokenHandler()
+token_id, pos_id =handle.process_text(text)
+embd=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_size)
+print(embd(input_token_id=token_id, input_position_id=pos_id).shape)
+print(token_id.shape)
+print(pos_id.shape)
