@@ -73,39 +73,40 @@ class MultiHead(nn.Module):
         return output
 
 class FeedForward(nn.Module):
-    def __init__(self):
+    def __init__(self,model_hidden_size:int):
         super().__init__()
-        self.l1=nn.Linear()
-        self.l2=nn.Linear()
+        self.l1=nn.Linear(model_hidden_size,model_hidden_size)
+        self.l2=nn.Linear(model_hidden_size,model_hidden_size)
         self.relu=nn.ReLU()
-        self.dropout=nn.Dropout()
+        #self.dropout=nn.Dropout()
 
     def forward(self,input):
-        output = self.dropout(self.l2(self.relu(self.l1(input))))
+        output = self.l2(self.relu(self.l1(input)))
         return output
     
 class Block(nn.Module):
-    def __init__(self):
+    def __init__(self,head_count:int, model_hidden_size:int ):
         super().__init__()
-        self.multihead=MultiHead()
-        self.ff=FeedForward()
-        self.layernorm1=nn.LayerNorm()
-        self.layernorm2=nn.LayerNorm()
+        self.multihead=MultiHead(head_count=head_count, model_hidden_size=model_hidden_size)
+        self.ff=FeedForward(model_hidden_size=model_hidden_size)
+        self.layernorm1=nn.LayerNorm(model_hidden_size, model_hidden_size)
+        self.layernorm2=nn.LayerNorm(model_hidden_size, model_hidden_size)
         #self.dropout()=nn.Dropout()
 
     def forward(self, input):
-        x+= self.layernorm1(self.multihead(input))
-        x+= self.layernorm2(self.ff(x))
-        return x
+        input += self.layernorm1(self.multihead(input))
+        input += self.layernorm2(self.ff(input))
+        return input
 
 class Encoder(nn.Module):
-    def __init__(self,n_blocks):
-        self.blocks=[Block() for _ in n_blocks]
-        self.embedding_layer=Embedder()
-    def forward(self,input):
-        output = self.embedding_layer(input)
+    def __init__(self,n_blocks:int,head_count:int,model_hidden_size:int):
+        super().__init__()
+        self.blocks=[Block(head_count=head_count,model_hidden_size=model_hidden_size) for _ in range(n_blocks)]
+        self.embedding_layer=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_hidden_size)
+    def forward(self,token_id,token_position_id):
+        output = self.embedding_layer(input_token_id=token_id,input_position_id=token_position_id)
         for block in self.blocks:
-            output = self.block(output)
+            output = block(output)
         return output
 
 class Model(nn.Module):
@@ -125,9 +126,8 @@ handle=TokenHandler()
 token_id, pos_id =handle.process_text(text)
 embd=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_size)
 embedding = embd(input_token_id=token_id, input_position_id=pos_id)
-print(token_id.shape)
-print(pos_id.shape)
-print(embedding.shape)
+
 attention_layer=MultiHead(head_count=4,model_hidden_size=model_size)
-print(attention_layer(embedding))
-print(attention_layer(embedding).shape)
+encoder=Encoder(n_blocks=2,head_count=4,model_hidden_size=100)
+print(encoder(token_id=token_id,token_position_id=pos_id))
+print(encoder(token_id=token_id,token_position_id=pos_id).shape)
