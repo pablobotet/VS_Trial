@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from transformers import AutoTokenizer
+from torch.nn import functional as F
 
-model_size=100
 class TokenHandler():
     def __init__(self,):
         self.tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -40,35 +40,35 @@ class Embedder(nn.Module):
         return embeddings
 
 class Head(nn.Module):
-    def __init__(self,head_size):
+    def __init__(self,head_size,model_hidden_size):
         super().__init__()
-        self.query=nn.Linear()
-        self.key=nn.Linear()
-        self.value=nn.Linear()
+        self.query=nn.Linear(model_hidden_size, head_size, bias=False)
+        self.key=nn.Linear(model_hidden_size, head_size, bias=False)
+        self.value=nn.Linear(model_hidden_size, head_size, bias=False)
         self.head_size=head_size
-        self.dropout=nn.Dropout()
+        #self.dropout=nn.Dropout()
 
     def forward(self,input):
         query_tensor=self.query(input) #dim (B,T,C)
         key_tensor=self.key(input) #dim (B,T,C)
         value_tensor=self.value(input) #dim (B,T,C)
-        weights_tensor=query_tensor@key_tensor.transpose(1,2)*self.head_size**-0.5 #(B, T, T)
-        #weights_tensor=F.softmax(weights_tensor,dim=-1)
-        weights_tensor=self.dropout(weights_tensor)
+        weights_tensor=query_tensor@key_tensor.transpose(-1,-2)*self.head_size**-0.5 #(B, T, T)
+        weights_tensor=F.softmax(weights_tensor,dim=-1)
+        #weights_tensor=self.dropout(weights_tensor)
         output = weights_tensor@value_tensor# (B,T,T)*(B,T, C)->(B,T,C)
         return output
 
 class MultiHead(nn.Module):
-    def __init__(self,head_size,head_count):
+    def __init__(self,head_count:int,model_hidden_size:int):
         super().__init__()
-        self.heads=[Head(head_size) for _ in range(head_count)]
-        self.l1=nn.Linear()
-        self.dropout=nn.Dropout()
+        self.heads=[Head(head_size=int(model_hidden_size/head_count),model_hidden_size=model_hidden_size) for _ in range(head_count)]
+        self.l1=nn.Linear(model_hidden_size,model_hidden_size)
+        #self.dropout=nn.Dropout()
 
     def forward(self, input):
         for head in self.heads:
             out = [head(input) for head in self.heads]
-        output = self.dropout(self.l1(torch.concat(out, dim=-1)))
+        output = self.l1(torch.concat(out, dim=-1))
         #Now we concat a apply the next linear layer
         return output
 
@@ -116,11 +116,18 @@ class Model(nn.Module):
     def forward(self,input):
         encoder_output = self.encoder(input) #Un vector que codifica todos los tokens
 
+model_size=100
+
 print("Encoder Trial:")
 text="mi perro muerde"
 handle=TokenHandler()
+
 token_id, pos_id =handle.process_text(text)
 embd=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_size)
-print(embd(input_token_id=token_id, input_position_id=pos_id).shape)
+embedding = embd(input_token_id=token_id, input_position_id=pos_id)
 print(token_id.shape)
 print(pos_id.shape)
+print(embedding.shape)
+attention_layer=MultiHead(head_count=4,model_hidden_size=model_size)
+print(attention_layer(embedding))
+print(attention_layer(embedding).shape)
