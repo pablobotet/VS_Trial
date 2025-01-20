@@ -72,7 +72,7 @@ class Head(nn.Module):
 class MultiHead(nn.Module):
     def __init__(self,head_count:int,model_hidden_size:int):
         super().__init__()
-        self.heads=[Head(head_size=int(model_hidden_size/head_count),model_hidden_size=model_hidden_size) for _ in range(head_count)]
+        self.heads=nn.ModuleList([Head(head_size=int(model_hidden_size/head_count),model_hidden_size=model_hidden_size) for _ in range(head_count)])
         self.l1=nn.Linear(model_hidden_size,model_hidden_size)
         #self.dropout=nn.Dropout()
 
@@ -110,11 +110,11 @@ class Block(nn.Module):
         return input
 
 class Encoder(nn.Module):
-    def __init__(self,n_blocks:int,head_count:int,model_hidden_size:int):
+    def __init__(self,token_handler:TokenHandler,n_blocks:int,head_count:int,model_hidden_size:int):
         super().__init__()
-        self.blocks=[Block(head_count=head_count,model_hidden_size=model_hidden_size) for _ in range(n_blocks)]
-        self.embedding_layer=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_hidden_size)
-        self.mask_ids=mask_ids
+        self.blocks=nn.ModuleList([Block(head_count=head_count,model_hidden_size=model_hidden_size) for _ in range(n_blocks)])
+        self.embedding_layer=Embedder(vocab_size=token_handler.vocab_size,model_hidden_size=model_hidden_size)
+        #self.mask_ids=mask_ids
 
     def forward(self,token_id,token_position_id):
         output = self.embedding_layer(input_token_id=token_id,input_position_id=token_position_id)
@@ -132,8 +132,3 @@ class Model(nn.Module):
         output= self.final_layer(encoder_output)
         return output
         """
-handler= TokenHandler()
-text="Mi casa está sucia y tengo hambre"
-token_ids,position_ids = handler.process_text(text)
-print(token_ids)
-print(handler.mask_token_ids(token_ids=token_ids))
