@@ -4,7 +4,7 @@ from transformers import AutoTokenizer
 from torch.nn import functional as F
 
 class TokenHandler():
-    def __init__(self,):
+    def __init__(self):
         self.tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased")
         self.vocab_size=len(self.tokenizer.get_vocab())
 
@@ -13,7 +13,18 @@ class TokenHandler():
         token_ids = torch.tensor(self.tokenizer.convert_tokens_to_ids(tokens))
         pos_ids = torch.tensor(list(range(len(token_ids))))
         return token_ids, pos_ids
-
+    
+    def mask_token_ids(self,token_ids,prob:float=0.15):
+        mask_token_id = self.tokenizer.mask_token_id
+        output = token_ids.clone()
+        random_prob = torch.rand(size=token_ids.shape)
+        print(random_prob)
+        output[random_prob < prob*0.8] = mask_token_id
+        count = int(random_prob[(random_prob>prob*0.8) & (random_prob<prob*0.9)].sum().item())
+        random_token_ids = torch.randint(low=0,high=self.vocab_size, size= (count,))
+        print(random_token_ids)
+        output[(random_prob>prob*0.8) & (random_prob<prob*0.9)] = random_token_ids
+        return output
     
 class Embedder(nn.Module):
     def __init__(self, vocab_size: int, model_hidden_size: int):
@@ -103,31 +114,26 @@ class Encoder(nn.Module):
         super().__init__()
         self.blocks=[Block(head_count=head_count,model_hidden_size=model_hidden_size) for _ in range(n_blocks)]
         self.embedding_layer=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_hidden_size)
+        self.mask_ids=mask_ids
+
     def forward(self,token_id,token_position_id):
         output = self.embedding_layer(input_token_id=token_id,input_position_id=token_position_id)
         for block in self.blocks:
             output = block(output)
         return output
-
+"""
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self,n_blocks:int, head_count:int, model_hidden_size:int, final_layer):
         self.encoder = Encoder()
-        self.output_layer = nn.Linear()
+        self.final_layer = final_layer
 
     def forward(self,input):
         encoder_output = self.encoder(input) #Un vector que codifica todos los tokens
-
-model_size=100
-
-print("Encoder Trial:")
-text="mi perro muerde"
-handle=TokenHandler()
-
-token_id, pos_id =handle.process_text(text)
-embd=Embedder(vocab_size=handle.vocab_size,model_hidden_size=model_size)
-embedding = embd(input_token_id=token_id, input_position_id=pos_id)
-
-attention_layer=MultiHead(head_count=4,model_hidden_size=model_size)
-encoder=Encoder(n_blocks=2,head_count=4,model_hidden_size=100)
-print(encoder(token_id=token_id,token_position_id=pos_id))
-print(encoder(token_id=token_id,token_position_id=pos_id).shape)
+        output= self.final_layer(encoder_output)
+        return output
+        """
+handler= TokenHandler()
+text="Mi casa está sucia y tengo hambre"
+token_ids,position_ids = handler.process_text(text)
+print(token_ids)
+print(handler.mask_token_ids(token_ids=token_ids))
