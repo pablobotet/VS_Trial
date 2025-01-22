@@ -17,14 +17,16 @@ class TokenHandler():
     def mask_token_ids(self,token_ids,prob:float=0.15):
         mask_token_id = self.tokenizer.mask_token_id
         output = token_ids.clone()
+        labels = torch.full(size=token_ids.shape, fill_value=-100)
         random_prob = torch.rand(size=token_ids.shape)
-        print(random_prob)
+        mask_cond = random_prob <prob 
         output[random_prob < prob*0.8] = mask_token_id
-        count = int(random_prob[(random_prob>prob*0.8) & (random_prob<prob*0.9)].sum().item())
-        random_token_ids = torch.randint(low=0,high=self.vocab_size, size= (count,))
-        print(random_token_ids)
-        output[(random_prob>prob*0.8) & (random_prob<prob*0.9)] = random_token_ids
-        return output
+        labels[random_prob<prob*0.8] = token_ids[random_prob<prob*0.8] 
+        count = int(mask_cond[(random_prob>prob*0.8) & (random_prob<prob*0.9)].sum().item())
+        random_token_ids = torch.randint(low=0,high=self.vocab_size, size=(count,))
+        output[(random_prob>prob*0.8) & (random_prob<prob*0.9)]=random_token_ids
+        print("masking complete")
+        return output, labels
     
 class Embedder(nn.Module):
     def __init__(self, vocab_size: int, model_hidden_size: int):
@@ -105,15 +107,15 @@ class Block(nn.Module):
         #self.dropout()=nn.Dropout()
 
     def forward(self, input):
-        input += self.layernorm1(self.multihead(input))
-        input += self.layernorm2(self.ff(input))
+        input = input +self.layernorm1(self.multihead(input))
+        input = input +self.layernorm2(self.ff(input))
         return input
 
 class Encoder(nn.Module):
-    def __init__(self,token_handler:TokenHandler,n_blocks:int,head_count:int,model_hidden_size:int):
+    def __init__(self,vocab_size:int,n_blocks:int,head_count:int,model_hidden_size:int):
         super().__init__()
         self.blocks=nn.ModuleList([Block(head_count=head_count,model_hidden_size=model_hidden_size) for _ in range(n_blocks)])
-        self.embedding_layer=Embedder(vocab_size=token_handler.vocab_size,model_hidden_size=model_hidden_size)
+        self.embedding_layer=Embedder(vocab_size=vocab_size,model_hidden_size=model_hidden_size)
         #self.mask_ids=mask_ids
 
     def forward(self,token_id,token_position_id):
@@ -121,14 +123,14 @@ class Encoder(nn.Module):
         for block in self.blocks:
             output = block(output)
         return output
-"""
-class Model(nn.Module):
-    def __init__(self,n_blocks:int, head_count:int, model_hidden_size:int, final_layer):
-        self.encoder = Encoder()
-        self.final_layer = final_layer
 
-    def forward(self,input):
-        encoder_output = self.encoder(input) #Un vector que codifica todos los tokens
-        output= self.final_layer(encoder_output)
+class Model(nn.Module):
+    def __init__(self,vocab_size:int, n_blocks:int, head_count:int, model_hidden_size:int):
+        super().__init__()
+        self.encoder = Encoder(vocab_size, n_blocks,head_count,model_hidden_size)
+        self.final_layer = nn.Linear(model_hidden_size, vocab_size)
+
+    def forward(self,token_id, token_position_id):
+        encoder_output = self.encoder(token_id,token_position_id) #Un vector que codifica todos los tokens
+        output= self.final_layer(encoder_output) #Predicctión final del token 
         return output
-        """
